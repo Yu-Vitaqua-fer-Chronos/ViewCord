@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 package com.foc.viewcord;
 
+import android.os.StrictMode;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.os.Bundle;
@@ -29,11 +30,18 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 
 public class MainActivity extends AppCompatActivity {
     private WebView m_webView;
     private WebViewClient m_webViewClient;
     private CookieManager m_cookieManager;
+    private OkHttpClient httpClient = new OkHttpClient();
+    private Helper helper = new Helper();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +63,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setup() {
+        // Strict Mode disabled
+        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+
+        StrictMode.setThreadPolicy(policy);
+
+        // Array of client mods
+        String[] clientMods = {
+                "https://api.goosemod.com/inject.js",
+                "https://raw.githubusercontent.com/Cumcord/Cumcord/stable/dist/build.js",
+                "https://raw.githubusercontent.com/FlickerMod/dist/main/build.js"
+        };
+
         // Find WebView
         m_webView = (WebView)findViewById(R.id.webView);
 
@@ -63,10 +83,15 @@ public class MainActivity extends AppCompatActivity {
             // Allow only discord.com
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (request.getUrl().getHost().equals("discord.com")) {
+                if (request.getUrl().getHost().contains("discord.com")) {
+                    return false;
+                } else if (request.getUrl().getHost().contains("discord.gg")) {
+                    return false;
+                } else if (request.getUrl().getHost().contains("discord.new")) {
+                    return false;
+                } else if (request.getUrl().getHost().contains("discordapp.com")) {
                     return false;
                 }
-
                 return true;
             }
 
@@ -91,26 +116,36 @@ public class MainActivity extends AppCompatActivity {
             // Inject CSS
             @Override
             public void onPageFinished(WebView view, String url) {
-                try {
-                    final String css = "[class^=\"sidebar-\"] { width: 25% !important; }";
-                    final String encoded = Base64.encodeToString(css.getBytes("UTF-8"), Base64.NO_WRAP);
+                String vcCss = "[class^=\"sidebar-\"] { width: 25% !important; }";
 
-                    // https://stackoverflow.com/questions/30018540/inject-css-to-a-site-with-webview-in-android/30018910#30018910
-                    view.evaluateJavascript("(function() {" +
-                            "var parent = document.getElementsByTagName('head').item(0);" +
-                            "var style = document.createElement('style');" +
-                            "style.type = 'text/css';" +
-                            "style.innerHTML = window.atob('" + encoded + "');" +
-                            "parent.appendChild(style)" +
-                            "})()", null
-                    );
-                } catch (Exception e) {
-                    Log.e("ViewCord", "CSS injection error: " + e.getMessage());
+                // https://stackoverflow.com/questions/30018540/inject-css-to-a-site-with-webview-in-android/30018910#30018910
+                helper.injectCSS(view, vcCss);
+
+                try {
+                    String goosemod = httpClient.newCall(new Request.Builder().url(clientMods[0]).build()).execute().body().string();
+                    helper.injectJS(view, goosemod);
+                } catch (IOException e) {
+                    Log.d("ViewCord", "Failed to load GooseMod: " + e.getMessage());
+                }
+
+                try {
+                    String cumcord = httpClient.newCall(new Request.Builder().url(clientMods[1]).build()).execute().body().string();
+                    helper.injectJS(view, cumcord);
+                } catch (IOException e) {
+                    Log.d("ViewCord", "Failed to load Cumcord: " + e.getMessage());
+                }
+
+                try {
+                    String flickermod = httpClient.newCall(new Request.Builder().url(clientMods[2]).build()).execute().body().string();
+                    helper.injectJS(view, flickermod);
+                } catch (IOException e) {
+                    Log.d("ViewCord", "Failed to load FlickerMod: " + e.getMessage());
                 }
 
                 super.onPageFinished(view, url);
             }
         };
+
         m_webView.setWebViewClient(m_webViewClient);
 
         // Cookies
