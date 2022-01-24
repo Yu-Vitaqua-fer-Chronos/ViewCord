@@ -8,7 +8,10 @@ import java.io.UnsupportedEncodingException;
 
 public class Helper {
     public void injectJS(WebView view, String inject) {
-        view.evaluateJavascript(inject, null);
+        String js = "const el = document.createElement(\"script\");" +
+                 "el.appendChild(document.createTextNode( "+ inject + "));" +
+                 "document.body.appendChild(el);";
+        view.evaluateJavascript(js, null);
     }
 
     public void injectCSS(WebView view, String inject) {
